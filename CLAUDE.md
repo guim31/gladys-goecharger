@@ -16,8 +16,8 @@ its only runtime dependency. It started from the official JavaScript template.
 ```bash
 npm install
 npm test                                  # node --test, the built-in runner
-node --test test/devices.test.js          # one file
-node --test --test-name-pattern "plug"    # tests whose name matches
+node --test test/hub.test.js              # one file
+node --test --test-name-pattern "widget"  # tests whose name matches
 npm run lint                              # ESLint
 npm run format:check                      # Prettier, as the CI runs it
 npm run format                            # Prettier, fix in place
@@ -31,15 +31,25 @@ pushing.
 ## Architecture
 
 ```
-index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
-src/scenes.js                     scene action handlers (manifest `scene_actions`)
-src/widgets.js                    dashboard widget handlers (manifest `widgets`)
+index.js                          SDK bootstrap only: registerHandlers + shutdown
+src/app.js                        every SDK handler (connected, config, scan, set value, poll,
+                                  device created, action, scene action, widget)
+src/hub.js                        the chargers: targets, refresh timer, states, commands,
+                                  "charge finished" trigger, connection status
+src/goe/client.js                 go-e HTTP API v2 client (local and cloud), GoeError kinds
+src/goe/model.js                  pure mapping: go-e status → Gladys values (charging-station enums)
+src/devices.js                    the Gladys device of a charger, its feature keys and states
+src/widgets.js                    dashboard widget "charger"
+src/scenes.js                     scene action "set_charge_mode"
+src/i18n.js                       every text, in en / fr / de / es
+src/issues.js                     repeated failures logged once (from gladys-subsonic)
 src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
+scripts/probe.mjs                 read-only check of a real charger (`node scripts/probe.mjs <ip>`)
 gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
+docs/{en,fr,de,es}.md             user documentation, same sections, re-hosted by Gladys
+test/helpers/fakeCharger.js       fake charger (real HTTP server) and fake go-e cloud
+test/fixtures/goe/                status answers (one real, see its README)
+test/gladys-rules.test.js         conformity with the core feature table (never loosen it)
 test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
 .github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
 ```
@@ -70,8 +80,10 @@ test/                             node --test, against the SDK's fake Gladys (in
   `type: "provider"`: 5.1.0). `test/manifest.test.js` ties the manifest to the
   code (defaults, action, scene and widget handlers): change both sides
   together.
-- **User-facing text** is bilingual (English and French): action messages,
-  manifest texts, and `docs/en.md` / `docs/fr.md`, kept in sync.
+- **User-facing text** exists in four languages (English, French, German with
+  "du", Spanish with "usted"): action messages, manifest texts, widget texts,
+  feature names, and `docs/en.md`, `docs/fr.md`, `docs/de.md`, `docs/es.md`,
+  kept in sync (same sections). `test/i18n.test.js` enforces it.
 - **Style.** Prettier formats, ESLint catches mistakes. Comments explain why,
   in English. Tests never touch the network.
 
@@ -233,3 +245,47 @@ long, et sur un « Sie »/« Ihr… » de politesse en allemand. Le store exige 
 - Docs `en`, `fr`, `de`, `es` avec les mêmes sections.
 - Chauffe, ouverture, sécurité : ne rien rendre pilotable « comme un thermostat » ou par un assistant
   vocal quand une erreur serait dangereuse (leçon d'OctoPrint).
+
+## go-e Charger (cette intégration)
+
+**API utilisée** (doc officielle `goecharger/go-eCharger-API-v2`, fichiers `http-en.md`,
+`cloudapi-en.md`, `API_KEYS_FIRMWARE/apikeys-en.md`) :
+
+- Lecture : `GET http://<ip>/api/status?filter=<clés séparées par des virgules>` (filtre en liste
+  depuis le micrologiciel 051.4 ; avant, un tableau JSON limité à ~10 clés : non pris en charge).
+  Les 16 clés lues sont dans `STATUS_KEYS` (`src/goe/client.js`). go-e déconseille l'état complet
+  et plus d'une requête par seconde.
+- Écriture : `GET /api/set?amp=16&frc=2` (valeurs JSON). Réponse : `{ clé: true }` ou
+  `{ clé: "message d'erreur" }` par clé. Seules `amp`, `frc`, `psm` sont écrites.
+- Cloud : `https://<numéro de série sur 6 chiffres>.api.v3.go-e.io/api/status|set`, en-tête
+  `Authorization: Bearer <jeton>` (jamais `?token=` : il finirait dans des journaux). 403 = jeton
+  refusé ou API cloud coupée, 404 = borne hors ligne, `set` répond 202 (accepté) ou 422.
+- `nrg` : U L1 L2 L3 N (0-3), I L1 L2 L3 (4-6), P L1 L2 L3 N total (7-11, en W), pf (12-15).
+  `eto` et `wh` en Wh. `var` 11 → 16 A max, 22 → 32 A. `psm` absent = pas de commutation de
+  phases (0 auto, 1 mono, 2 tri). `frc` 0 neutre (l'appli décide), 1 arrêt, 2 marche.
+
+**Pièges et choix** :
+
+- **API v2 coupée** : la borne répond (404/403 ou page HTML) au lieu de refuser la connexion. Le
+  client le distingue (`api_disabled`) d'une borne injoignable (`unreachable`) pour que le message
+  dise où l'activer. Hypothèse prise sans matériel : à vérifier avec `scripts/probe.mjs`.
+- **`car` → enums OCPP de Gladys** (`CHARGING_STATION_*`, 5.2.1) : tableau en tête de
+  `src/goe/model.js`. « Terminée » (car 4) = `PAUSED_BY_VEHICLE` (comme SuspendedEV), « en attente »
+  (car 3) = `EV_CONNECTED`, ou `PAUSED_BY_CHARGER` si `alw` est faux. Sans voiture, l'état de charge
+  est publié `IDLE` pour ne pas laisser un « En charge » périmé.
+- **L'énergie de la session n'est PAS un `energy-sensor/energy`** : le suivi d'énergie 5.2 traite
+  `energy-sensor/index` **et** `energy-sensor/energy` comme des compteurs
+  (`ENERGY_INDEX_FEATURE_TYPES`), ce qui aurait compté la recharge deux fois. Seul `eto` (kWh) est
+  un `energy-sensor/index` ; `wh` est `electrical-vehicle-charge/last-charge-energy-added`.
+- `device-temperature-sensor` prend le type générique `TYPES.SENSOR.DECIMAL` : il n'y a pas de
+  `TYPES.DEVICE_TEMPERATURE_SENSOR` dans le SDK.
+- Les champs d'un formulaire de bouton de widget (`action.fields[].label`) doivent être des objets
+  multilingues : une chaîne simple fait jeter le bouton (`validateWidgetContent` le signale).
+- `text/select` (mode de charge, phases) : `supported_options` à libellé simple (chaîne), dans la
+  langue de la config ; leurs états se publient en `{ text }`. L'éditeur de scènes ne sait pas
+  régler un `text/select` : d'où l'action de scène `set_charge_mode`.
+- Une borne éteinte au démarrage n'a pas de numéro de série connu : il est retrouvé dans les
+  `params` (`SERIAL`, `HOST`) de l'appareil déjà créé, pour publier « hors ligne » quand même.
+- Clés figées : fonctionnalités (`FEATURE` dans `src/devices.js`), déclencheur `charge_finished`,
+  action de scène `set_charge_mode`, widget `charger` et ses actions `force_on`, `force_off`,
+  `neutral`, `set_current`, action `test_connection`.

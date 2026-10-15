@@ -1,41 +1,30 @@
 // -----------------------------------------------------------------------------
-// Scene actions (SDK v0.14+, Gladys 5.1+).
+// Scene actions (manifest `scene_actions`, Gladys 5.1+). Keys are forever.
 //
-// A scene action is an OPERATION a scene author places in a scene, with
-// parameters and a result: "identify this device", "take a snapshot", "clean
-// these rooms". Each one is declared in the manifest `scene_actions` field
-// (key, label, `fields` in the config_schema grammar, scalar `outputs`) and
-// handled here, keyed by that same `key`; index.js registers every entry with
-// `gladys.onSceneAction(key, ...)`.
-//
-// Scene TRIGGERS are the other direction ("this happened"): they are fired by
-// the device that observes the event, see src/devices/motionSensor.js.
-//
-// The rules that matter:
-//   - `fields` arrive RESOLVED: scene variables substituted, defaults applied,
-//     validated by the core; a `"source": "devices"` field is the chosen
-//     device external_id;
-//   - resolve an object of the declared `outputs` (scalars only), readable by
-//     the following actions of the scene, or `undefined` for none. Keys not
-//     declared in the manifest are dropped by the core;
-//   - throwing fails THIS action only: the scene logs it and continues. A
-//     scene action is never a condition: return an output and let the scene
-//     author gate on it;
-//   - never fire a scene event as a consequence of a received action: a scene
-//     bound to that event would loop through the integration.
+// The charging current needs none: it is a device feature, set by the core's
+// own "control a device" action. The charging mode is a text select, which
+// the scene editor cannot set: it gets its own action — "charge now when the
+// electricity is cheap", "stop when the house draws too much".
 // -----------------------------------------------------------------------------
 
 import { createLogger } from '@gladysassistant/integration-sdk';
-import { signalDevice } from './devices/index.js';
+import { UserError } from './hub.js';
 
 const logger = createLogger({ name: 'scenes' });
 
 export const SCENE_ACTIONS = {
-  // The ack is awaited under the action's `timeout_seconds` (15 s in the
-  // manifest), counted from the moment the scene reaches the action.
-  async identify_device(gladys, { fields, config }) {
-    logger.info(`Scene action identify_device <- ${fields.device}`);
-    const signalled = await signalDevice(gladys, fields.device, config);
-    return { signalled };
+  /**
+   * @param {import('./hub.js').ChargerHub} hub
+   * @param {{ charger: string, mode: 'neutral'|'on'|'off' }} fields
+   */
+  async set_charge_mode(hub, fields) {
+    logger.debug(`Scene action set_charge_mode <- ${fields.mode}`);
+    try {
+      await hub.setForceMode(fields.charger, fields.mode);
+    } catch (err) {
+      // The scene logs the error message: say it in English, plainly.
+      throw err instanceof UserError ? new Error(err.userMessage.en) : err;
+    }
+    return undefined;
   },
 };

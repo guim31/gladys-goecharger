@@ -1,61 +1,146 @@
-# Demo Devices Template
+# go-e Charger
 
-This is the user documentation of the integration. Gladys re-hosts this file
-and shows a permanent **Documentation** link to it in the Configuration screen
-(in the user's language, with English as the fallback) — it is when
-configuring that the user needs it most. Keep the short onboarding hints in
-the `section` blocks of the manifest `config_schema`; put the long
-step-by-step (screenshots, troubleshooting…) here.
+Follow and drive your **go-e Charger** EV charging stations (go-eCharger V3 and
+V4: HOME+ and HOMEfix V3, Gemini, Gemini flex) from Gladys, over their **local
+HTTP API v2**: no cloud needed. The go-e cloud API remains an option for a charger Gladys
+cannot reach on the local network.
 
-## What you get
+> **Developed without the hardware: feedback welcome.** This integration was
+> written from the go-e API documentation and real answers published by other
+> projects, without a charger at hand. If something looks wrong, open an issue on
+> the GitHub repository with the integration logs.
 
-Six demo devices show up after installation: a weather station (real data
-from Open-Meteo), a switch, a dimmable light, a smart plug with power
-metering, a motion sensor and a camera.
+This integration is not affiliated with go-e GmbH.
+
+## Requirements
+
+- A go-e Charger with a firmware supporting the HTTP API v2 (V3 and later,
+  firmware 051.4 or later). An old go-e Charger V2 (API v1 only) is not
+  supported.
+- The **local HTTP API v2 turned on** in the go-e app:
+  - older app: **Internet → Advanced settings → Access to /api/status and
+    /api/set API**, then save;
+  - newer app: **Settings → Connection → API settings → Allow local HTTP API
+    v2**.
+- A **fixed IP address** for the charger, set in your router (DHCP
+  reservation): the integration reaches it by its address.
+- Gladys 5.2.0 or later.
+
+When the API v2 is off, the charger answers but refuses the requests: the
+Configuration screen then says "the local HTTP API v2 is off" and where to
+turn it on.
 
 ## Configuration
 
-1. Open the **Configuration** tab of the integration.
-2. Set the **latitude** and **longitude** the demo weather station should
-   observe (they default to Paris), and pick your temperature unit.
-   The **refresh interval** sets how often the weather station and the
-   plug's power are read: every 5 minutes by default, every minute at most.
-3. Save: the devices appear in the **Discovery** tab, ready to be added.
+1. Install the integration from **Integrations → Install from GitHub** (or the
+   store), then open its **Configuration** tab.
+2. **Charger IP addresses**: the address of each charger, separated by commas
+   (for example `192.0.2.10, 192.0.2.11`).
+3. **Refresh interval**: how often the chargers are read (15 seconds by
+   default).
+4. **Language of the feature names**: names given to the features of new
+   devices and language of the error texts (French by default).
+5. Save: one device per charger appears in the **Discovery** tab. Add it.
+6. The **Test the connection** button reads every charger and says, for each
+   one, whether it answers (name, serial number, firmware) or why not.
 
-The **Prefer the local connection** toggle drives the demo plug: it reports
-the channel it actually uses as a badge (local or cloud), with an orange dot
-when it runs degraded (local refused, cloud fallback).
+Optional, **go-e cloud**: only for a charger Gladys cannot reach locally. Turn
+on the cloud API in the go-e app (Internet → Advanced settings), then enter the
+charger's **serial number** and the **API token** the app shows. The data then
+goes through go-e's servers.
 
-## Actions
+## Refresh and API usage
 
-- **Test the weather provider** — performs a live request to Open-Meteo and
-  shows the current temperature and humidity under the button.
-- **Identify a device** — pick one of your devices in the list and it will
-  signal itself (the demo light "blinks" in the logs).
+The integration reads each charger itself, at the chosen interval, with one
+filtered request (`/api/status?filter=…`, 16 keys) — go-e advises against
+reading the full status, and against more than one request per second. Gladys
+also polls the devices as a fallback; the integration then skips a charger it
+has just read. Only the values that changed are sent to Gladys, plus every
+value again every 6 hours so a stable one never shows "no recent value".
 
-## Scenes
+The go-e cloud has no documented quota; the same pace applies.
 
-The integration adds its own cards to the scene editor (Gladys 5.1 or
-later), under the **Integrations** category:
+## The charger device
 
-- **Motion detected** (trigger) — starts the scene when a demo motion sensor
-  sees something move. Optionally pick the sensor and what moved (person,
-  animal); left empty, any detection matches. The following actions can
-  read what moved with `{{triggerEvent.data.target}}`.
-- **Identify a device** (action) — makes the chosen device signal itself.
-  It returns whether the device could signal itself, so the following
-  actions can depend on it.
+| Feature            | What it shows                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------- |
+| Connector          | Available (no car), Occupied (car plugged in), Unavailable (offline), Faulted (error)                         |
+| Charging state     | Charging, Vehicle connected (waiting), Paused (vehicle): charge complete, Paused (charger): not allowed, Idle |
+| Car plugged in     | 1 when a car is plugged in                                                                                    |
+| Charging power     | Total power, W                                                                                                |
+| Power L1, L2, L3   | Power per phase, W                                                                                            |
+| Current L1, L2, L3 | Current per phase, A                                                                                          |
+| Session energy     | Energy since the car was plugged in, kWh                                                                      |
+| Total energy       | The charger's meter, kWh: Gladys' energy monitoring computes the consumption and its cost from it             |
+| Charging current   | **Command**: the current offered to the car, from 6 A to 16 A (11 kW) or 32 A (22 kW)                         |
+| Charging mode      | **Command**: Automatic (app), Forced charge, Forced stop                                                      |
+| Phases             | **Command**, only on chargers able to switch: Automatic, One phase, Three phases                              |
+| Temperature        | The hottest sensor of the charger, °C                                                                         |
+| Error              | The go-e error in words ("None" when all is well)                                                             |
+| Online             | 1 while the charger answers                                                                                   |
 
-## Dashboard
+"Automatic (app)" is go-e's neutral mode: the charger follows what the app
+decides (schedule, solar "eco" mode, aWATTar prices). Solar charging stays in
+the go-e app or in evcc: this integration does not duplicate it.
 
-Add the **Demo status** widget to a dashboard: it shows the live
-temperature of the weather station and the power of the office plug, the
-connection the plug currently uses (orange when degraded) and the observed
-location. Its **Identify the light** button makes the demo light signal
-itself.
+## Widget
+
+Add the **go-e Charger** widget to a dashboard and pick a charger. It shows the
+live power, the session energy and the charging current, the state in go-e
+words (Ready, Charging, Waiting for the car, Charge complete, Error), the mode,
+the phases and the error if any. Four buttons: **Charge** (forced charge),
+**Stop** (forced stop), **Auto** (back to the app's mode) and **Current…**,
+which opens a form to set the current. The current mode carries a check icon.
+
+## Scene trigger
+
+**go-e charge finished**: the car stopped drawing after a charge (it is full,
+or reached the limit set in the car or the app). Optionally pick the charger.
+The following actions can use `energy_kwh` (energy of the session) and
+`charger` (its name). It fires once per charge, never at startup.
+
+"Car plugged in" needs no trigger: use the **Car plugged in** feature (changes
+to 1) in a "device value" trigger.
+
+## Scene action
+
+**Set the go-e charging mode**: forced charge, forced stop, or back to the
+automatic mode of the app. The charging current needs no action of its own: it
+is a feature, set with Gladys' usual "control a device" action.
+
+## Scene examples
+
+- **Charge during off-peak hours**: at 22:00, "Set the go-e charging mode" to
+  Forced charge; at 06:00, back to Automatic (app).
+- **Tell me when the car is full**: trigger "go-e charge finished", then send a
+  message "Charge finished: {{triggerEvent.data.energy_kwh}} kWh".
+- **Protect the main breaker**: when the house power goes over a threshold,
+  set the charging current to 6 A; when it goes down, back to 16 A.
 
 ## Troubleshooting
 
-The integration logs everything it does: check the integration logs from the
-Gladys UI (or `docker logs` on the host) with `LOG_LEVEL=debug` for the full
-detail.
+- **"No answer"**: check the address, that the charger is on the Wi-Fi, and
+  that Gladys and the charger are on the same network.
+- **"The local HTTP API v2 is off"**: turn it on in the go-e app (see
+  Requirements), save, then press **Test the connection**.
+- **Cloud: "the go-e cloud refused the token"**: check the serial number (6
+  digits) and the token; generating a new token in the app invalidates the old
+  one.
+- **A command fails with "the charger refused the request"**: the current is
+  probably above the maximum set in the go-e app.
+- The integration logs say the rest: set `LOG_LEVEL=debug` for the detail of
+  every read.
+
+## Limits
+
+- One charger per address; the cloud access serves a single charger.
+- The feature names and the maximum current are fixed when the device is added
+  (a Gladys rule): to change the language, delete the device and add it again.
+- The charger's firmware must be 051.4 or later (filtered reads).
+- No access to the RFID cards, the schedules, the cable lock or the solar
+  settings: they stay in the go-e app. The cable lock is deliberately not
+  exposed.
+- The local API v2 has no password: anyone on your network can use it, as with
+  the go-e app.
+- Tested against a fake charger and published answers only (see the note at the
+  top).

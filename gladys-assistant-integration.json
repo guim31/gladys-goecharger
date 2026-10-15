@@ -1,177 +1,407 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "go-e Charger",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "go-e Charger EV wallboxes over the local API: charge state, power, energy, current and modes.",
+    "fr": "Bornes de recharge go-e par l'API locale : état, puissance, énergie, courant et modes de charge.",
+    "de": "go-e Charger Wallboxen über die lokale API: Ladezustand, Leistung, Energie, Strom und Modi.",
+    "es": "Cargadores go-e por la API local: estado de carga, potencia, energía, corriente y modos."
   },
   "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
-  "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "docker_image": "ghcr.io/guim31/gladys-goecharger:1.0.0",
+  "gladys_version": ">=5.2.0",
+  "cover_image": "https://raw.githubusercontent.com/guim31/gladys-goecharger/main/cover.png",
+  "categories": ["energy"],
+  "transports": ["local"],
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": {
+        "en": "Before you start",
+        "fr": "Avant de commencer",
+        "de": "Bevor du anfängst",
+        "es": "Antes de empezar"
+      },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "In the go-e app, turn on the local HTTP API v2 (Internet → Advanced settings, or Connection → API settings in the newer app). Give the charger a fixed IP address in your router, then enter it below.",
+        "fr": "Dans l'appli go-e, activez l'API HTTP v2 locale (Internet → Paramètres avancés, ou Connexion → Paramètres de l'API dans la nouvelle appli). Donnez une adresse IP fixe à la borne dans votre box, puis saisissez-la ci-dessous.",
+        "de": "Schalte in der go-e App die lokale HTTP-API v2 ein (Internet → Erweiterte Einstellungen, oder Verbindung → API-Einstellungen in der neuen App). Gib der Ladestation in deinem Router eine feste IP-Adresse und trage sie unten ein.",
+        "es": "En la app go-e, active la API HTTP v2 local (Internet → Ajustes avanzados, o Conexión → Ajustes de la API en la app nueva). Asigne una dirección IP fija al cargador en su router e introdúzcala abajo."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
+          "url": "https://github.com/goecharger/go-eCharger-API-v2/blob/main/http-en.md",
+          "label": {
+            "en": "go-e HTTP API v2",
+            "fr": "API HTTP v2 de go-e",
+            "de": "go-e HTTP-API v2",
+            "es": "API HTTP v2 de go-e"
+          }
         }
       ]
     },
     {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
-      "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
+      "key": "chargers",
+      "type": "string",
+      "label": {
+        "en": "Charger IP addresses",
+        "fr": "Adresses IP des bornes",
+        "de": "IP-Adressen der Ladestationen",
+        "es": "Direcciones IP de los cargadores"
       },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
-      "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
-    },
-    {
-      "key": "longitude",
-      "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
       "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
+        "en": "One or more addresses, separated by commas.",
+        "fr": "Une ou plusieurs adresses, séparées par des virgules.",
+        "de": "Eine oder mehrere Adressen, durch Kommas getrennt.",
+        "es": "Una o varias direcciones, separadas por comas."
       },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
-      "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
-    },
-    {
-      "key": "unit",
-      "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
+      "placeholder": {
+        "en": "e.g. 192.0.2.10",
+        "fr": "ex. 192.0.2.10",
+        "de": "z. B. 192.0.2.10",
+        "es": "p. ej. 192.0.2.10"
+      },
       "required": false,
-      "default": "celsius",
+      "default": ""
+    },
+    {
+      "key": "poll_interval",
+      "type": "select",
+      "label": {
+        "en": "Refresh interval",
+        "fr": "Intervalle de rafraîchissement",
+        "de": "Aktualisierungsintervall",
+        "es": "Intervalo de actualización"
+      },
+      "description": {
+        "en": "How often the chargers are read. go-e advises against more than one read per second.",
+        "fr": "Fréquence de lecture des bornes. go-e déconseille plus d'une lecture par seconde.",
+        "de": "Wie oft die Ladestationen gelesen werden. go-e rät von mehr als einer Abfrage pro Sekunde ab.",
+        "es": "Frecuencia de lectura de los cargadores. go-e desaconseja más de una lectura por segundo."
+      },
+      "required": false,
+      "default": "15",
       "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
+        {
+          "value": "10",
+          "label": {
+            "en": "10 seconds",
+            "fr": "10 secondes",
+            "de": "10 Sekunden",
+            "es": "10 segundos"
+          }
+        },
+        {
+          "value": "15",
+          "label": {
+            "en": "15 seconds",
+            "fr": "15 secondes",
+            "de": "15 Sekunden",
+            "es": "15 segundos"
+          }
+        },
+        {
+          "value": "30",
+          "label": {
+            "en": "30 seconds",
+            "fr": "30 secondes",
+            "de": "30 Sekunden",
+            "es": "30 segundos"
+          }
+        },
+        {
+          "value": "60",
+          "label": {
+            "en": "1 minute",
+            "fr": "1 minute",
+            "de": "1 Minute",
+            "es": "1 minuto"
+          }
+        }
       ]
     },
     {
-      "key": "poll_frequency",
-      "type": "number",
-      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
+      "key": "language",
+      "type": "select",
+      "label": {
+        "en": "Language of the feature names",
+        "fr": "Langue des noms de fonctionnalités",
+        "de": "Sprache der Funktionsnamen",
+        "es": "Idioma de los nombres de las funciones"
+      },
       "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
+        "en": "Names given to the features of new devices, and language of the error texts.",
+        "fr": "Noms donnés aux fonctionnalités des nouveaux appareils, et langue des textes d'erreur.",
+        "de": "Namen der Funktionen neuer Geräte und Sprache der Fehlertexte.",
+        "es": "Nombres de las funciones de los dispositivos nuevos e idioma de los textos de error."
       },
       "required": false,
-      "default": 300,
-      "min": 60,
-      "max": 3600
+      "default": "fr",
+      "options": [
+        {
+          "value": "en",
+          "label": {
+            "en": "English",
+            "fr": "Anglais",
+            "de": "Englisch",
+            "es": "Inglés"
+          }
+        },
+        {
+          "value": "fr",
+          "label": {
+            "en": "French",
+            "fr": "Français",
+            "de": "Französisch",
+            "es": "Francés"
+          }
+        },
+        {
+          "value": "de",
+          "label": {
+            "en": "German",
+            "fr": "Allemand",
+            "de": "Deutsch",
+            "es": "Alemán"
+          }
+        },
+        {
+          "value": "es",
+          "label": {
+            "en": "Spanish",
+            "fr": "Espagnol",
+            "de": "Spanisch",
+            "es": "Español"
+          }
+        }
+      ]
+    },
+    {
+      "key": "cloud",
+      "type": "section",
+      "label": {
+        "en": "Optional: go-e cloud",
+        "fr": "Facultatif : cloud go-e",
+        "de": "Optional: go-e Cloud",
+        "es": "Opcional: nube go-e"
+      },
+      "description": {
+        "en": "Only for a charger Gladys cannot reach on the local network. Turn on the cloud API in the go-e app (Internet → Advanced settings): it shows the API token. The data then goes through go-e's servers.",
+        "fr": "Seulement pour une borne que Gladys ne peut pas joindre sur le réseau local. Activez l'API cloud dans l'appli go-e (Internet → Paramètres avancés) : elle affiche le jeton d'API. Les données passent alors par les serveurs de go-e.",
+        "de": "Nur für eine Ladestation, die Gladys im lokalen Netzwerk nicht erreicht. Schalte die Cloud-API in der go-e App ein (Internet → Erweiterte Einstellungen): Dort steht das API-Token. Die Daten laufen dann über die Server von go-e.",
+        "es": "Solo para un cargador que Gladys no puede alcanzar en la red local. Active la API en la nube en la app go-e (Internet → Ajustes avanzados): muestra el token de API. Los datos pasan entonces por los servidores de go-e."
+      },
+      "links": [
+        {
+          "url": "https://github.com/goecharger/go-eCharger-API-v2/blob/main/cloudapi-en.md",
+          "label": {
+            "en": "go-e cloud API",
+            "fr": "API cloud de go-e",
+            "de": "go-e Cloud-API",
+            "es": "API en la nube de go-e"
+          }
+        }
+      ]
+    },
+    {
+      "key": "cloud_serial",
+      "type": "string",
+      "label": {
+        "en": "Serial number",
+        "fr": "Numéro de série",
+        "de": "Seriennummer",
+        "es": "Número de serie"
+      },
+      "placeholder": {
+        "en": "e.g. 012345",
+        "fr": "ex. 012345",
+        "de": "z. B. 012345",
+        "es": "p. ej. 012345"
+      },
+      "required": false,
+      "default": ""
+    },
+    {
+      "key": "cloud_token",
+      "type": "secret",
+      "label": {
+        "en": "Cloud API token",
+        "fr": "Jeton de l'API cloud",
+        "de": "Cloud-API-Token",
+        "es": "Token de la API en la nube"
+      },
+      "required": false
     }
   ],
   "actions": [
     {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
+      "key": "test_connection",
+      "label": {
+        "en": "Test the connection",
+        "fr": "Tester la connexion",
+        "de": "Verbindung testen",
+        "es": "Probar la conexión"
+      },
       "timeout_seconds": 30
-    },
-    {
-      "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ]
     }
   ],
   "scene_triggers": [
     {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
+      "key": "charge_finished",
+      "label": {
+        "en": "go-e charge finished",
+        "fr": "Charge go-e terminée",
+        "de": "go-e Laden beendet",
+        "es": "Carga go-e terminada"
+      },
       "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
+        "en": "The car stopped drawing after a charge: it is full, or reached the limit set in the car or the app.",
+        "fr": "La voiture a cessé de consommer après une charge : elle est pleine, ou a atteint la limite réglée dans la voiture ou l'appli.",
+        "de": "Das Auto zieht nach dem Laden keinen Strom mehr: Es ist voll oder hat das im Auto oder in der App eingestellte Limit erreicht.",
+        "es": "El coche ha dejado de consumir tras una carga: está lleno o ha alcanzado el límite fijado en el coche o en la app."
       },
       "fields": [
         {
           "key": "device",
           "type": "select",
           "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
-        },
-        {
-          "key": "target",
-          "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
-          "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
-          ]
+          "label": {
+            "en": "Charger",
+            "fr": "Borne",
+            "de": "Ladestation",
+            "es": "Cargador"
+          }
         }
       ],
       "variables": [
         {
-          "key": "target",
+          "key": "energy_kwh",
+          "type": "number",
+          "label": {
+            "en": "Energy charged (kWh)",
+            "fr": "Énergie chargée (kWh)",
+            "de": "Geladene Energie (kWh)",
+            "es": "Energía cargada (kWh)"
+          }
+        },
+        {
+          "key": "charger",
           "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
+          "label": {
+            "en": "Charger name",
+            "fr": "Nom de la borne",
+            "de": "Name der Ladestation",
+            "es": "Nombre del cargador"
+          }
         }
       ]
     }
   ],
   "scene_actions": [
     {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
+      "key": "set_charge_mode",
+      "label": {
+        "en": "Set the go-e charging mode",
+        "fr": "Régler le mode de charge go-e",
+        "de": "go-e Lademodus einstellen",
+        "es": "Ajustar el modo de carga go-e"
       },
-      "timeout_seconds": 15,
+      "description": {
+        "en": "Force the charge on or off, or go back to the automatic mode set in the go-e app.",
+        "fr": "Force la charge ou l'arrêt, ou revient au mode automatique réglé dans l'appli go-e.",
+        "de": "Erzwingt Laden oder Stopp, oder kehrt zum automatischen Modus der go-e App zurück.",
+        "es": "Fuerza la carga o la parada, o vuelve al modo automático configurado en la app go-e."
+      },
+      "timeout_seconds": 20,
       "fields": [
         {
-          "key": "device",
+          "key": "charger",
           "type": "select",
           "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
+          "label": {
+            "en": "Charger",
+            "fr": "Borne",
+            "de": "Ladestation",
+            "es": "Cargador"
+          },
           "required": true
-        }
-      ],
-      "outputs": [
+        },
         {
-          "key": "signalled",
-          "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
+          "key": "mode",
+          "type": "select",
+          "label": {
+            "en": "Mode",
+            "fr": "Mode",
+            "de": "Modus",
+            "es": "Modo"
+          },
+          "required": true,
+          "options": [
+            {
+              "value": "on",
+              "label": {
+                "en": "Forced charge",
+                "fr": "Charge forcée",
+                "de": "Erzwungenes Laden",
+                "es": "Carga forzada"
+              }
+            },
+            {
+              "value": "off",
+              "label": {
+                "en": "Forced stop",
+                "fr": "Arrêt forcé",
+                "de": "Erzwungener Stopp",
+                "es": "Parada forzada"
+              }
+            },
+            {
+              "value": "neutral",
+              "label": {
+                "en": "Automatic (app)",
+                "fr": "Automatique (appli)",
+                "de": "Automatisch (App)",
+                "es": "Automático (app)"
+              }
+            }
+          ]
         }
       ]
     }
   ],
   "widgets": [
     {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
-      "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
+      "key": "charger",
+      "label": {
+        "en": "go-e Charger",
+        "fr": "go-e Charger",
+        "de": "go-e Charger",
+        "es": "go-e Charger"
       },
-      "icon": "activity",
-      "action_timeout_seconds": 15
+      "description": {
+        "en": "Charge state, power, session energy and current, with charge, stop and current buttons.",
+        "fr": "État, puissance, énergie de la session et courant, avec boutons charger, arrêter et courant.",
+        "de": "Ladezustand, Leistung, Energie und Strom, mit Tasten zum Laden, Stoppen und für den Strom.",
+        "es": "Estado, potencia, energía de la sesión y corriente, con botones cargar, detener y corriente."
+      },
+      "icon": "zap",
+      "action_timeout_seconds": 20,
+      "settings": [
+        {
+          "key": "charger",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "Charger",
+            "fr": "Borne",
+            "de": "Ladestation",
+            "es": "Cargador"
+          },
+          "required": true
+        }
+      ]
     }
   ]
 }
