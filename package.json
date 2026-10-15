@@ -1,6 +1,6 @@
 {
   "name": "gladys-goecharger",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Gladys Assistant integration for go-e Charger EV charging stations, over their local HTTP API v2.",
   "type": "module",

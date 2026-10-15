@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-15
+
 ### Added
 
 - go-e Charger stations (V3 and V4) over their local HTTP API v2: one device per
@@ -29,4 +31,5 @@ the notes of the version's GitHub Release.
   answers, or that the local API v2 is off and where to turn it on.
 - Documentation in English, French, German and Spanish.
 
-[Unreleased]: https://github.com/guim31/gladys-goecharger/commits/main
+[Unreleased]: https://github.com/guim31/gladys-goecharger/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/guim31/gladys-goecharger/releases/tag/v1.0.1
