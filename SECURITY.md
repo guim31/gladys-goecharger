@@ -30,6 +30,17 @@ Gladys before reporting a problem.
 
 In scope: the code of this repository and the Docker image it publishes.
 
+What the integration handles:
+
+- **Stored**: nothing in `/data`. The configuration (charger addresses,
+  refresh interval, language, and the optional go-e cloud serial number and
+  API token) is kept by Gladys; the token is a `secret` field.
+- **Secrets**: the go-e cloud API token is sent only to `*.api.v3.go-e.io`, in
+  the `Authorization` header, and never written to the logs.
+- **Network**: plain HTTP to the chargers' local API v2 on the addresses the
+  user entered (the go-e API has no authentication nor TLS locally), and HTTPS
+  to the go-e cloud when it is configured. Nothing else.
+
 Out of scope: Gladys Assistant itself (see its
 [security policy](https://github.com/GladysAssistant/Gladys/security/policy)),
-and the third-party services and devices the integration talks to.
+the go-e chargers, their firmware and the go-e cloud.

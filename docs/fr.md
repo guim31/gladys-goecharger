@@ -1,67 +1,157 @@
-# Template de démonstration
+# go-e Charger
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+Suivez et pilotez vos **bornes de recharge go-e Charger** (go-eCharger V3 et V4 :
+HOME+ et HOMEfix V3, Gemini, Gemini flex) depuis Gladys, par leur **API HTTP v2
+locale** : aucun cloud nécessaire. L'API cloud de go-e reste une option pour une
+borne que Gladys ne peut pas joindre sur le réseau local.
 
-## Ce que vous obtenez
+> **Développée sans le matériel : vos retours sont les bienvenus.** Cette
+> intégration a été écrite d'après la documentation de l'API go-e et de vraies
+> réponses publiées par d'autres projets, sans borne sous la main. Si quelque
+> chose semble faux, ouvrez une issue sur le dépôt GitHub avec les logs de
+> l'intégration.
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+Cette intégration n'est pas affiliée à go-e GmbH.
+
+## Prérequis
+
+- Une borne go-e Charger dont le micrologiciel connaît l'API HTTP v2 (V3 et
+  suivantes, micrologiciel 051.4 ou plus récent). Une ancienne go-e Charger V2
+  (API v1 seulement) n'est pas prise en charge.
+- L'**API HTTP v2 locale activée** dans l'appli go-e :
+  - ancienne appli : **Internet → Paramètres avancés → Accès à l'API
+    /api/status et /api/set**, puis enregistrer ;
+  - nouvelle appli : **Réglages → Connexion → Paramètres de l'API → Autoriser
+    l'API HTTP v2 locale**.
+- Une **adresse IP fixe** pour la borne, réglée dans votre box (réservation
+  DHCP) : l'intégration la joint par son adresse.
+- Gladys 5.2.0 ou plus récent.
+
+Quand l'API v2 est désactivée, la borne répond mais refuse les requêtes :
+l'écran de configuration indique alors « l'API HTTP v2 locale est désactivée »
+et où l'activer.
 
 ## Configuration
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+1. Installez l'intégration depuis **Intégrations → Installer depuis GitHub**
+   (ou le store), puis ouvrez son onglet **Configuration**.
+2. **Adresses IP des bornes** : l'adresse de chaque borne, séparées par des
+   virgules (par exemple `192.0.2.10, 192.0.2.11`).
+3. **Intervalle de rafraîchissement** : fréquence de lecture des bornes (15
+   secondes par défaut).
+4. **Langue des noms de fonctionnalités** : noms donnés aux fonctionnalités des
+   nouveaux appareils et langue des textes d'erreur (français par défaut).
+5. Enregistrez : un appareil par borne apparaît dans l'onglet **Découverte**.
+   Ajoutez-le.
+6. Le bouton **Tester la connexion** lit chaque borne et indique, pour chacune,
+   si elle répond (nom, numéro de série, micrologiciel) ou pourquoi elle ne
+   répond pas.
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+Facultatif, **cloud go-e** : seulement pour une borne que Gladys ne peut pas
+joindre en local. Activez l'API cloud dans l'appli go-e (Internet → Paramètres
+avancés), puis saisissez le **numéro de série** de la borne et le **jeton
+d'API** affiché par l'appli. Les données passent alors par les serveurs de go-e.
 
-## Actions
+## Rafraîchissement et usage de l'API
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+L'intégration lit elle-même chaque borne, à l'intervalle choisi, en une requête
+filtrée (`/api/status?filter=…`, 16 clés) : go-e déconseille de lire l'état
+complet, et plus d'une requête par seconde. Gladys interroge aussi les appareils
+en secours ; l'intégration saute alors une borne qu'elle vient de lire. Seules
+les valeurs qui changent sont envoyées à Gladys, plus toutes les valeurs toutes
+les 6 heures pour qu'une valeur stable n'affiche jamais « Pas de valeur
+récente ».
 
-## Scènes
+Le cloud go-e n'a pas de quota documenté ; le même rythme s'applique.
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+## L'appareil borne
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
+| Fonctionnalité        | Ce qu'elle montre                                                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Connecteur            | Disponible (pas de voiture), Occupé (voiture branchée), Indisponible (hors ligne), En défaut (erreur)                          |
+| État de la charge     | En charge, Véhicule connecté (en attente), Suspendue (véhicule) : charge terminée, Suspendue (borne) : non autorisée, Inactive |
+| Voiture branchée      | 1 quand une voiture est branchée                                                                                               |
+| Puissance de charge   | Puissance totale, W                                                                                                            |
+| Puissance L1, L2, L3  | Puissance par phase, W                                                                                                         |
+| Courant L1, L2, L3    | Courant par phase, A                                                                                                           |
+| Énergie de la session | Énergie depuis le branchement de la voiture, kWh                                                                               |
+| Énergie totale        | Le compteur de la borne, kWh : le suivi d'énergie de Gladys en calcule la consommation et son coût                             |
+| Courant de charge     | **Commande** : le courant proposé à la voiture, de 6 A à 16 A (11 kW) ou 32 A (22 kW)                                          |
+| Mode de charge        | **Commande** : Automatique (appli), Charge forcée, Arrêt forcé                                                                 |
+| Phases                | **Commande**, seulement sur les bornes qui savent commuter : Automatique, Monophasé, Triphasé                                  |
+| Température           | Le capteur le plus chaud de la borne, °C                                                                                       |
+| Erreur                | L'erreur go-e en clair (« Aucune » quand tout va bien)                                                                         |
+| En ligne              | 1 tant que la borne répond                                                                                                     |
 
-## Tableau de bord
+« Automatique (appli) » est le mode neutre de go-e : la borne suit ce que décide
+l'appli (planning, mode solaire « eco », prix aWATTar). La recharge solaire
+reste dans l'appli go-e ou dans evcc : cette intégration ne la duplique pas.
 
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
+## Widget
+
+Ajoutez le widget **go-e Charger** à un tableau de bord et choisissez une borne.
+Il montre en direct la puissance, l'énergie de la session et le courant de
+charge, l'état dans les mots de go-e (Prête, En charge, En attente de la
+voiture, Charge terminée, Erreur), le mode, les phases et l'erreur éventuelle.
+Quatre boutons : **Charger** (charge forcée), **Arrêter** (arrêt forcé),
+**Auto** (retour au mode de l'appli) et **Courant…**, qui ouvre un formulaire
+pour régler le courant. Le mode en cours porte une coche.
+
+## Déclencheur de scène
+
+**Charge go-e terminée** : la voiture a cessé de consommer après une charge
+(elle est pleine, ou a atteint la limite réglée dans la voiture ou l'appli).
+Choisissez éventuellement la borne. Les actions suivantes peuvent utiliser
+`energy_kwh` (énergie de la session) et `charger` (son nom). Il se déclenche une
+fois par charge, jamais au démarrage.
+
+« Voiture branchée » n'a pas besoin de déclencheur : utilisez la fonctionnalité
+**Voiture branchée** (passe à 1) dans un déclencheur « valeur d'un appareil ».
+
+## Action de scène
+
+**Régler le mode de charge go-e** : charge forcée, arrêt forcé, ou retour au
+mode automatique de l'appli. Le courant de charge n'a pas besoin d'action
+propre : c'est une fonctionnalité, réglée par l'action habituelle de Gladys
+« contrôler un appareil ».
+
+## Exemples de scènes
+
+- **Charger en heures creuses** : à 22 h, « Régler le mode de charge go-e » sur
+  Charge forcée ; à 6 h, retour à Automatique (appli).
+- **Prévenir quand la voiture est pleine** : déclencheur « Charge go-e
+  terminée », puis envoyer le message « Charge terminée :
+  {{triggerEvent.data.energy_kwh}} kWh ».
+- **Protéger le disjoncteur** : quand la puissance de la maison dépasse un
+  seuil, régler le courant de charge sur 6 A ; quand elle redescend, revenir à
+  16 A.
 
 ## Dépannage
 
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+- **« Pas de réponse »** : vérifiez l'adresse, que la borne est sur le Wi-Fi, et
+  que Gladys et la borne sont sur le même réseau.
+- **« L'API HTTP v2 locale est désactivée »** : activez-la dans l'appli go-e
+  (voir Prérequis), enregistrez, puis appuyez sur **Tester la connexion**.
+- **Cloud : « le cloud go-e refuse le jeton »** : vérifiez le numéro de série (6
+  chiffres) et le jeton ; générer un nouveau jeton dans l'appli invalide
+  l'ancien.
+- **Une commande échoue avec « la borne a refusé la demande »** : le courant
+  dépasse probablement le maximum réglé dans l'appli go-e.
+- Les logs de l'intégration disent le reste : réglez `LOG_LEVEL=debug` pour le
+  détail de chaque lecture.
+
+## Limites
+
+- Une borne par adresse ; l'accès cloud sert une seule borne.
+- Les noms des fonctionnalités et le courant maximal sont figés à l'ajout de
+  l'appareil (règle de Gladys) : pour changer de langue, supprimez l'appareil et
+  ajoutez-le de nouveau.
+- Le micrologiciel de la borne doit être 051.4 ou plus récent (lectures
+  filtrées).
+- Pas d'accès aux badges RFID, aux plannings, au verrouillage du câble ni aux
+  réglages solaires : ils restent dans l'appli go-e. Le verrouillage du câble
+  n'est volontairement pas exposé.
+- L'API v2 locale n'a pas de mot de passe : toute personne sur votre réseau peut
+  l'utiliser, comme avec l'appli go-e.
+- Testée contre une fausse borne et des réponses publiées seulement (voir la
+  note en haut).

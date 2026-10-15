@@ -1,77 +1,139 @@
+// The "charger" widget: content within the core budget, bound to features
+// that exist, the current mode marked by its icon, and its buttons.
+
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateWidgetContent } from '@gladysassistant/integration-sdk';
-import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
-import { buildDiscoveredDevices } from '../src/devices/index.js';
-import { simulateLanSession } from '../src/devices/plug.js';
-import { DEMO_STATUS_WIDGET, WIDGETS, refreshWidgets } from '../src/widgets.js';
-import { normalizeConfig } from '../src/config.js';
+import { boundFeatureIds, WIDGET_ACTION } from '../src/widgets.js';
+import { FEATURE } from '../src/devices.js';
+import { createWorld, lastState } from './helpers/world.js';
 
-const gladys = createFakeGladys();
-const config = normalizeConfig();
-const demoStatus = WIDGETS[DEMO_STATUS_WIDGET];
+const LANGS = ['en', 'fr', 'de', 'es'];
 
-// What the SDK passes to onWidgetGet, plus the config index.js adds.
-const getContent = (cfg = config) =>
-  demoStatus.get(gladys, { settings: {}, language: 'en', units: 'metric', config: cfg });
+async function content(world, device, language = 'fr') {
+  const ack = await world.fake.widgetGet('charger', {
+    settings: { charger: device.external_id },
+    language,
+    units: 'metric',
+  });
+  assert.equal(ack.success, true, ack.error);
+  return ack.data.content;
+}
 
-test('the demo_status content is rendered exactly as sent', async () => {
-  // [] = nothing the core would drop, truncate or trim to the content budget.
-  assert.deepEqual(validateWidgetContent(await getContent()), []);
-});
-
-test('the degraded plug connection content is valid too', async () => {
-  simulateLanSession(false);
-  try {
-    const content = await getContent();
-    assert.deepEqual(validateWidgetContent(content), []);
-    const status = content.components.find((component) => component.type === 'status');
-    assert.ok(
-      status.items.some((item) => item.color === 'warning'),
-      'degraded shows a warning',
-    );
-  } finally {
-    simulateLanSession(true);
+test('the content fits the core budget, in every language and every state', async (t) => {
+  const world = await createWorld({ fixtures: ['idle', 'charging', 'completeNoPsm', 'error'] });
+  t.after(() => world.stop());
+  for (const device of world.fake.discoveredDevices) {
+    for (const language of LANGS) {
+      const widget = await content(world, device, language);
+      assert.deepEqual(validateWidgetContent(widget), [], `${device.name} (${language})`);
+      assert.ok(widget.components.length <= 8);
+      // Every tile is bound to a feature the device really has.
+      const featureIds = new Set(device.features.map((f) => f.external_id));
+      for (const id of boundFeatureIds(widget)) {
+        assert.ok(featureIds.has(id), `${id} is not a feature of ${device.name}`);
+      }
+    }
   }
 });
 
-test('the live tiles reference features the integration publishes', async () => {
-  const featureIds = new Set(
-    buildDiscoveredDevices(gladys, config).flatMap((device) =>
-      device.features.map((feature) => feature.external_id),
-    ),
+test('the status says the go-e state, the mode, the phases and an error', async (t) => {
+  const world = await createWorld({ fixtures: ['charging', 'error'] });
+  t.after(() => world.stop());
+  const [garage, carport] = world.fake.discoveredDevices;
+
+  const charging = await content(world, garage, 'fr');
+  const status = charging.components.find((c) => c.type === 'status');
+  assert.deepEqual(
+    status.items.map((i) => [i.label, i.value, i.color]),
+    [
+      ['État', 'En charge', 'success'],
+      ['Mode', 'Automatique (appli)', 'neutral'],
+      ['Phases', 'Automatique', 'neutral'],
+    ],
   );
-  const liveTiles = (await getContent()).components.filter((c) => c.device_feature);
-  assert.ok(liveTiles.length > 0, 'the template demonstrates a device-bound tile');
-  for (const tile of liveTiles) {
-    assert.ok(featureIds.has(tile.device_feature), `unknown feature ${tile.device_feature}`);
-  }
-});
+  const buttons = charging.components.filter((c) => c.type === 'button');
+  assert.deepEqual(
+    buttons.map((b) => [b.action.key, b.icon]),
+    [
+      [WIDGET_ACTION.FORCE_ON, 'zap'],
+      [WIDGET_ACTION.FORCE_OFF, 'pause-circle'],
+      [WIDGET_ACTION.NEUTRAL, 'check-circle'],
+      [WIDGET_ACTION.SET_CURRENT, 'sliders'],
+    ],
+  );
+  assert.ok(
+    buttons.every((b) => b.style !== 'primary'),
+    'primary is invisible in dark mode',
+  );
+  const form = buttons[3].action.fields[0];
+  assert.deepEqual([form.min, form.max, form.default], [6, 32, 16]);
 
-test('every button action of the content is handled and answers a short toast', async () => {
-  const buttons = (await getContent()).components.filter((c) => c.type === 'button' && c.action);
-  assert.ok(buttons.length > 0, 'the template demonstrates a widget action');
-  for (const { action } of buttons) {
-    const message = await demoStatus.action(gladys, {
-      actionKey: action.key,
-      params: action.params ?? {},
-      settings: {},
-      config,
-    });
-    assert.ok(message.en, 'the toast carries at least the mandatory `en` text');
-    assert.ok(message.en.length <= 200, 'toasts are capped at 200 characters');
-  }
-});
-
-test('an unknown widget action fails, so the user sees the error', async () => {
-  await assert.rejects(
-    demoStatus.action(gladys, { actionKey: 'unknown', params: {}, settings: {}, config }),
-    /Unknown widget action/,
+  const error = await content(world, carport, 'en');
+  const items = error.components.find((c) => c.type === 'status').items;
+  assert.deepEqual(items.at(-1), { label: 'Error', value: 'Overheating', color: 'danger' });
+  assert.equal(
+    error.components.find((c) => c.action?.key === WIDGET_ACTION.FORCE_OFF).icon,
+    'check-circle',
   );
 });
 
-test('refreshWidgets nudges every widget', () => {
-  const fresh = createFakeGladys();
-  refreshWidgets(fresh);
-  assert.deepEqual(fresh.fake.widgetRefreshes, Object.keys(WIDGETS));
+test('the buttons drive the charger and answer a toast', async (t) => {
+  const world = await createWorld({ fixtures: ['charging'] });
+  t.after(() => world.stop());
+  const device = world.fake.discoveredDevices[0];
+  const settings = { charger: device.external_id };
+
+  const on = await world.fake.widgetAction('charger', WIDGET_ACTION.FORCE_ON, {}, { settings });
+  assert.equal(on.success, true);
+  assert.equal(world.chargers[0].status.frc, 2);
+  assert.equal(lastState(world, '012346', FEATURE.FORCE_MODE), 'on');
+
+  const current = await world.fake.widgetAction(
+    'charger',
+    WIDGET_ACTION.SET_CURRENT,
+    {},
+    { settings, values: { amps: 24 } },
+  );
+  assert.equal(current.success, true);
+  assert.equal(world.chargers[0].status.amp, 24);
+
+  const outOfRange = await world.fake.widgetAction(
+    'charger',
+    WIDGET_ACTION.SET_CURRENT,
+    {},
+    { settings, values: { amps: 40 } },
+  );
+  assert.equal(outOfRange.success, true, 'a toast, not a failed action');
+  assert.match(JSON.stringify(outOfRange.data), /between 6 and 32 A/);
+
+  const oldCore = await world.fake.widgetAction(
+    'charger',
+    WIDGET_ACTION.SET_CURRENT,
+    {},
+    {
+      settings,
+    },
+  );
+  assert.equal(oldCore.success, false, 'a core without action forms sends no values');
+});
+
+test('no charger picked, a charger gone, a charger offline', async (t) => {
+  const world = await createWorld({ fixtures: ['charging'] });
+  t.after(() => world.stop());
+  const pick = await world.fake.widgetGet('charger', { settings: {}, language: 'de' });
+  assert.match(JSON.stringify(pick.data.content), /Wähle eine Ladestation/);
+
+  const gone = await world.fake.widgetGet('charger', {
+    settings: { charger: 'ext:test-integration:charger:999999' },
+    language: 'es',
+  });
+  assert.match(JSON.stringify(gone.data.content), /ya no está configurado/);
+
+  await world.chargers[0].powerOff();
+  await world.hub.cycle({ force: true });
+  const offline = await content(world, world.fake.discoveredDevices[0], 'fr');
+  assert.deepEqual(validateWidgetContent(offline), []);
+  assert.match(JSON.stringify(offline), /Hors ligne/);
+  assert.equal(offline.components.filter((c) => c.type === 'button').length, 0);
 });
